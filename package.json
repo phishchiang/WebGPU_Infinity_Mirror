@@ -1,0 +1,22 @@
+{
+  "name": "webgpu-ex",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/dat.gui": "^0.7.13",
+    "@webgpu/types": "^0.1.58",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.5"
+  },
+  "dependencies": {
+    "@gltf-transform/core": "^4.1.3",
+    "dat.gui": "^0.7.9",
+    "wgpu-matrix": "^3.4.0"
+  }
+}
