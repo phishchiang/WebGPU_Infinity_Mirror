@@ -39,7 +39,7 @@ export class WebGPUApp{
     uGlow_Radius: number;
     uGlow_Intensity: number;
   } = {
-    type: 'arcball',
+    type: 'head',
     uTestValue: 1.0,
     uTestValue_02: 1.0,
     uGlow_Threshold: 0.5,
@@ -98,7 +98,14 @@ export class WebGPUApp{
     pitchLimit: 0.4,
     minDist: 2.0,
     maxDist: 15.0,
+    invertYaw: true, // new
   };
+  // Tracking extras
+  private baselineIOD: number | null = null;
+  private calibrationDistance: number = 6;
+  private faceDetected = false;
+  private lastFaceTime = 0;
+  private faceLostGraceMS = 500;
   private webcam = document.getElementById("webcam") as HTMLVideoElement;
   private landmarkCanvas = document.getElementById("landmark-canvas") as HTMLCanvasElement;
   private landmarkCtx = this.landmarkCanvas.getContext("2d");
@@ -187,7 +194,7 @@ export class WebGPUApp{
 
 
         // // DEBUG: Emit particles directly from the 468 landmark points
-        // const landmarks = results.faceLandmarks[0];
+        const landmarks = results.faceLandmarks[0];
         // const numLandmarks = landmarks.length;
         // const positions = new Float32Array(PARTICLE_COUNT * 4);
         // // For PARTICLE_COUNT > 468, repeat the landmark points
@@ -199,7 +206,11 @@ export class WebGPUApp{
         //   positions[i * 4 + 2] = lm.z ?? 0;
         //   positions[i * 4 + 3] = 1.0;
         // }
- 
+
+        // Update head camera pose
+        if (this.params.type === 'head') {
+          this.updateHeadPoseFromLandmarks(landmarks as any);
+        }
 
       } else {
         // Clear overlay if no face
@@ -210,10 +221,24 @@ export class WebGPUApp{
   }
 
   private enableCam() {
+    const TARGET_WIDTH = 480; // pick 320, 480, or 640
     // Request webcam access and stream to the video element
-    navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+    navigator.mediaDevices.getUserMedia({ 
+      video: {
+        width: { ideal: TARGET_WIDTH, max: 640 },
+        height: { ideal: 360 }, // or leave out and let aspect follow camera
+        facingMode: 'user',     // front camera on mobile
+        frameRate: { ideal: 30, max: 60 },
+      },
+      audio: false,
+    }).then((stream) => {
       this.webcam.srcObject = stream;
       this.webcam.addEventListener("loadeddata", async () => {
+        // Match overlay size to intrinsic video
+        if (this.landmarkCanvas) {
+          this.landmarkCanvas.width = this.webcam.videoWidth;
+          this.landmarkCanvas.height = this.webcam.videoHeight;
+        }
         await this.loadFaceLandmarker();
         this.webcamRunning = true;
         this.predictWebcam();
@@ -397,6 +422,8 @@ export class WebGPUApp{
     headFolder.add(this.headSettings, 'pitchLimit', 0.1, 1.0).step(0.01).name('PitchLimit');
     headFolder.add(this.headSettings, 'minDist', 0.5, 5.0).step(0.1).name('MinDist');
     headFolder.add(this.headSettings, 'maxDist', 5.0, 25.0).step(0.1).name('MaxDist');
+    headFolder.add(this.headSettings, 'invertYaw').name('InvertYaw');
+    headFolder.add({ Calibrate: () => this.calibrateHead() }, 'Calibrate');
     headFolder.close();
       
     this.gui.add(this.params, 'uTestValue', 0.0, 1.0).step(0.01).onChange((value) => {
@@ -436,6 +463,47 @@ export class WebGPUApp{
         console.error(`Unknown key: ${key}`);
         return;
     }
+  }
+
+  private calibrateHead() {
+    this.baselineIOD = null;          // capture next frame
+    this.calibrationDistance = this.headDistance;
+  }
+
+  private updateHeadPoseFromLandmarks(landmarks: { x: number; y: number; z?: number }[]) {
+    if (landmarks.length < 264) return;
+    const left = landmarks[33];
+    const right = landmarks[263];
+    const centerX = (left.x + right.x) * 0.5;
+    const centerY = (left.y + right.y) * 0.5;
+    const iod = Math.hypot(right.x - left.x, right.y - left.y);
+
+    if (this.baselineIOD === null) {
+      this.baselineIOD = iod;
+    }
+
+    const normX = (centerX - 0.5) * 2;
+    const normY = (centerY - 0.5) * 2;
+    let yaw = normX * this.headSettings.yawLimit;
+    if (this.headSettings.invertYaw) yaw = -yaw;
+    let pitch = normY * this.headSettings.pitchLimit;
+
+    let distance = this.headDistance;
+    if (this.baselineIOD && iod > 0.00001) {
+      const scale = this.baselineIOD / iod;  // >1 means farther
+      distance = this.calibrationDistance * scale;
+      distance = Math.min(Math.max(distance, this.headSettings.minDist), this.headSettings.maxDist);
+    }
+
+    this.headYaw = Math.min(Math.max(yaw, -this.headSettings.yawLimit), this.headSettings.yawLimit);
+    this.headPitch = Math.min(Math.max(pitch, -this.headSettings.pitchLimit), this.headSettings.pitchLimit);
+    this.headDistance = distance;
+
+    (this.cameras['head'] as HeadTrackedCamera).setPose({
+      yaw: this.headYaw,
+      pitch: this.headPitch,
+      distance: this.headDistance
+    });
   }
 
   private async initializeWebGPU() {
@@ -516,7 +584,7 @@ export class WebGPUApp{
         entryPoint: 'fragment_main',
         targets: [{ format: this.presentationFormat }],
       },
-      primitive: { topology: 'triangle-list', cullMode: 'back' },
+      primitive: { topology: 'triangle-list', cullMode: 'none' },
       depthStencil: {
         format: 'depth24plus',
         depthWriteEnabled: true,
@@ -545,18 +613,18 @@ export class WebGPUApp{
     const input = this.inputHandler();
     if (this.params.type === 'head') {
       const headCam = camera as HeadTrackedCamera;
-      // Map mouse drag / touch movement to yaw/pitch for now
-      this.headYaw += input.analog.x * 0.002;
-      this.headPitch += input.analog.y * 0.002;
-      // Clamp
-      this.headYaw = Math.min(Math.max(this.headYaw, -this.headSettings.yawLimit), this.headSettings.yawLimit);
-      this.headPitch = Math.min(Math.max(this.headPitch, -this.headSettings.pitchLimit), this.headSettings.pitchLimit);
-      // Zoom to distance
-      if (input.analog.zoom !== 0) {
-        this.headDistance *= 1 + input.analog.zoom * 0.05;
-        this.headDistance = Math.min(Math.max(this.headDistance, this.headSettings.minDist), this.headSettings.maxDist);
+      if (!this.faceDetected) {
+        // Mouse fallback
+        this.headYaw += input.analog.x * 0.002;
+        this.headPitch += input.analog.y * 0.002;
+        this.headYaw = Math.min(Math.max(this.headYaw, -this.headSettings.yawLimit), this.headSettings.yawLimit);
+        this.headPitch = Math.min(Math.max(this.headPitch, -this.headSettings.pitchLimit), this.headSettings.pitchLimit);
+        if (input.analog.zoom !== 0) {
+          this.headDistance *= 1 + input.analog.zoom * 0.05;
+          this.headDistance = Math.min(Math.max(this.headDistance, this.headSettings.minDist), this.headSettings.maxDist);
+        }
+        headCam.setPose({ yaw: this.headYaw, pitch: this.headPitch, distance: this.headDistance });
       }
-      headCam.setPose({ yaw: this.headYaw, pitch: this.headPitch, distance: this.headDistance });
     }
     return camera.update(deltaTime, input);
   }
