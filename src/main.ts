@@ -2,6 +2,7 @@ import { mat4, vec3 } from 'wgpu-matrix';
 import { GUI } from 'dat.gui';
 import basicWGSL from './shaders/basic.wgsl?raw'; // Raw String Import but only specific to Vite.
 import { ArcballCamera, WASDCamera } from './camera';
+import { HeadTrackedCamera } from './headTrackedCamera'; // Added head-tracked camera
 import { createInputHandler } from './input';
 import { loadAndProcessGLB } from './loadParseGLB';
 import { RenderTarget } from './RenderTarget';
@@ -14,6 +15,7 @@ import { BrightPassEffect } from './postprocessing/BrightPassEffect';
 import { BlurEffect } from './postprocessing/GaussianBlurEffect';
 import { GlowAddEffect } from './postprocessing/GlowAddEffect';
 import { UnrealGlowEffect } from './postprocessing/UnrealGlowEffect';
+import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 
 const MESH_PATH = '/assets/meshes/light_color.glb';
 
@@ -29,7 +31,7 @@ export class WebGPUApp{
   private cameras: { [key: string]: any };
   private aspect!: number;
   private params: { 
-    type: 'arcball' | 'WASD'; 
+    type: 'arcball' | 'WASD' | 'head'; // added 'head'
     uTestValue: number; 
     uTestValue_02: number; 
     uGlow_Threshold: number;
@@ -87,6 +89,23 @@ export class WebGPUApp{
   private glowAddEffect!: GlowAddEffect;
   private unrealGlowEffect!: UnrealGlowEffect;
   private enableGlow: boolean = true; // or control with GUI
+  // Head camera placeholder state (until real face tracking integration)
+  private headYaw = 0;
+  private headPitch = 0;
+  private headDistance = 6;
+  private headSettings = {
+    yawLimit: 0.6,
+    pitchLimit: 0.4,
+    minDist: 2.0,
+    maxDist: 15.0,
+  };
+  private webcam = document.getElementById("webcam") as HTMLVideoElement;
+  private landmarkCanvas = document.getElementById("landmark-canvas") as HTMLCanvasElement;
+  private landmarkCtx = this.landmarkCanvas.getContext("2d");
+  private lastVideoTime: number = -1;
+  private webcamRunning: boolean = false;
+  private faceLandmarker?: FaceLandmarker;
+  private faceLandmarkerLoaded: boolean = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -94,6 +113,7 @@ export class WebGPUApp{
     this.cameras = {
       arcball: new ArcballCamera({ position: WebGPUApp.CAMERA_POSITION }),
       WASD: new WASDCamera({ position: WebGPUApp.CAMERA_POSITION }),
+      head: new HeadTrackedCamera({ distance: 6 }), // new camera
     };
     this.oldCameraType = this.params.type;
     this.lastFrameMS = Date.now();
@@ -106,6 +126,11 @@ export class WebGPUApp{
     this.modelMatrix = mat4.identity();
     this.viewMatrix = mat4.identity();
     this.projectionMatrix = mat4.identity();
+
+    // this.webcam.addEventListener("loadeddata", () => {
+    //   this.landmarkCanvas.width = this.webcam.videoWidth;
+    //   this.landmarkCanvas.height = this.webcam.videoHeight;
+    // });
 
     this.setupAndRender();
   }
@@ -121,6 +146,91 @@ export class WebGPUApp{
     this.initializeGUI();
     this.setupEventListeners();
     this.renderFrame();
+    this.enableCam();
+  }
+
+
+
+  private async predictWebcam() {
+    if (!this.faceLandmarkerLoaded || !this.webcam || this.webcam.readyState !== 4) {
+      requestAnimationFrame(this.predictWebcam.bind(this));
+      return;
+    }
+
+    // Resize overlay if needed
+    if (
+      this.landmarkCanvas.width !== this.webcam.videoWidth ||
+      this.landmarkCanvas.height !== this.webcam.videoHeight
+    ) {
+      this.landmarkCanvas.width = this.webcam.videoWidth;
+      this.landmarkCanvas.height = this.webcam.videoHeight;
+    }
+
+    // Only run detection if the video frame has changed
+    if (this.lastVideoTime !== this.webcam.currentTime) {
+      this.lastVideoTime = this.webcam.currentTime;
+      const nowInMs = performance.now();
+      const results = await this.faceLandmarker!.detectForVideo(this.webcam, nowInMs);
+
+      // Draw landmarks if detected
+      if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+        const ctx = this.landmarkCtx;
+        ctx!.clearRect(0, 0, this.landmarkCanvas.width, this.landmarkCanvas.height);
+        ctx!.fillStyle = "red";
+        for (const lm of results.faceLandmarks[0]) {
+          const x = lm.x * this.landmarkCanvas.width;
+          const y = lm.y * this.landmarkCanvas.height;
+          ctx!.beginPath();
+          ctx!.arc(x, y, 2, 0, 2 * Math.PI);
+          ctx!.fill();
+        }
+
+
+        // // DEBUG: Emit particles directly from the 468 landmark points
+        // const landmarks = results.faceLandmarks[0];
+        // const numLandmarks = landmarks.length;
+        // const positions = new Float32Array(PARTICLE_COUNT * 4);
+        // // For PARTICLE_COUNT > 468, repeat the landmark points
+        // for (let i = 0; i < PARTICLE_COUNT; i++) {
+        //   const lm = landmarks[i % numLandmarks];
+        //   // Map x/y from [0,1] to [-1,1] (NDC), z as-is
+        //   positions[i * 4 + 0] = lm.x * 2 - 1;
+        //   positions[i * 4 + 1] = -(lm.y * 2 - 1); // flip y for NDC
+        //   positions[i * 4 + 2] = lm.z ?? 0;
+        //   positions[i * 4 + 3] = 1.0;
+        // }
+ 
+
+      } else {
+        // Clear overlay if no face
+        this.landmarkCtx!.clearRect(0, 0, this.landmarkCanvas.width, this.landmarkCanvas.height);
+      }
+    }
+    if (this.webcamRunning) requestAnimationFrame(this.predictWebcam.bind(this));
+  }
+
+  private enableCam() {
+    // Request webcam access and stream to the video element
+    navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+      this.webcam.srcObject = stream;
+      this.webcam.addEventListener("loadeddata", async () => {
+        await this.loadFaceLandmarker();
+        this.webcamRunning = true;
+        this.predictWebcam();
+      }, { once: true });
+    });
+  }
+
+  private async loadFaceLandmarker() {
+    const filesetResolver = await FilesetResolver.forVisionTasks(
+      import.meta.env.BASE_URL + 'assets/wasm'
+    );
+    this.faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+      baseOptions: { modelAssetPath: import.meta.env.BASE_URL + 'assets/face_landmarker.task' },
+      runningMode: 'VIDEO',
+      numFaces: 1
+    });
+    this.faceLandmarkerLoaded = true;
   }
 
   private async initLoadAndProcessGLB() {
@@ -276,12 +386,19 @@ export class WebGPUApp{
   }
 
   private initializeGUI() {
-    this.gui.add(this.params, 'type', ['arcball', 'WASD']).onChange(() => {
+    this.gui.add(this.params, 'type', ['arcball', 'WASD', 'head']).onChange(() => { // added head option
       this.newCameraType = this.params.type;
       this.cameras[this.newCameraType].matrix = this.cameras[this.oldCameraType].matrix;
       this.oldCameraType = this.newCameraType
     });
-    
+    // Head camera folder (stub controls)
+    const headFolder = this.gui.addFolder('Head Camera (stub)');
+    headFolder.add(this.headSettings, 'yawLimit', 0.1, 1.2).step(0.01).name('YawLimit');
+    headFolder.add(this.headSettings, 'pitchLimit', 0.1, 1.0).step(0.01).name('PitchLimit');
+    headFolder.add(this.headSettings, 'minDist', 0.5, 5.0).step(0.1).name('MinDist');
+    headFolder.add(this.headSettings, 'maxDist', 5.0, 25.0).step(0.1).name('MaxDist');
+    headFolder.close();
+      
     this.gui.add(this.params, 'uTestValue', 0.0, 1.0).step(0.01).onChange((value) => {
       this.updateFloatUniform( 'uTestValue', value );
     });
@@ -425,8 +542,23 @@ export class WebGPUApp{
 
   private getViewMatrix(deltaTime: number) {
     const camera = this.cameras[this.params.type];
-    const viewMatrix =  camera.update(deltaTime, this.inputHandler());
-    return viewMatrix;
+    const input = this.inputHandler();
+    if (this.params.type === 'head') {
+      const headCam = camera as HeadTrackedCamera;
+      // Map mouse drag / touch movement to yaw/pitch for now
+      this.headYaw += input.analog.x * 0.002;
+      this.headPitch += input.analog.y * 0.002;
+      // Clamp
+      this.headYaw = Math.min(Math.max(this.headYaw, -this.headSettings.yawLimit), this.headSettings.yawLimit);
+      this.headPitch = Math.min(Math.max(this.headPitch, -this.headSettings.pitchLimit), this.headSettings.pitchLimit);
+      // Zoom to distance
+      if (input.analog.zoom !== 0) {
+        this.headDistance *= 1 + input.analog.zoom * 0.05;
+        this.headDistance = Math.min(Math.max(this.headDistance, this.headSettings.minDist), this.headSettings.maxDist);
+      }
+      headCam.setPose({ yaw: this.headYaw, pitch: this.headPitch, distance: this.headDistance });
+    }
+    return camera.update(deltaTime, input);
   }
 
   private initRenderTargetsForPP() {

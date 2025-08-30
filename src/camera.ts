@@ -23,7 +23,8 @@ export default interface Camera {
 }
 
 // The common functionality between camera implementations
-class CameraBase {
+// Exported so additional camera types (e.g. head-tracked) can extend it.
+export class CameraBase {
   // The camera matrix
   private matrix_ = new Float32Array([
     1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,

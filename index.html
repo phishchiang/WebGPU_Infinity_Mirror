@@ -17,12 +17,42 @@
       canvas {
         display: block;
       }
-      #app{width: 100vw;height: 100vh}
+      #app {
+        width: 100vw;
+        height: 100vh;
+        display: block;
+      }
+      #webcam-container {
+        position: absolute;
+        top: 0px;
+        left: 0px;
+        width: 20vw;
+        height: 20vh;
+        z-index: 10;
+        pointer-events: none; /* So clicks go through to the main canvas */
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+      }
+      #webcam, #landmark-canvas {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        top: 0; left: 0;
+        object-fit: cover;
+        background: #00000000;
+        pointer-events: none;
+      }
     </style>
     <script defer src="/src/main.ts" type="module"></script>
     <!-- <script defer type="module" src="../../js/iframe-helper.js"></script> -->
   </head>
   <body>
+    <div id="webcam-container">
+      <video id="webcam" autoplay playsinline></video>
+      <canvas id="landmark-canvas"></canvas>
+      <div id="speech-transcript"></div>
+    </div>
     <canvas id="app"></canvas>></canvas>
   </body>
 </html>
