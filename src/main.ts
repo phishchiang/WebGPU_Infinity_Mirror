@@ -18,7 +18,7 @@ import { UnrealGlowEffect } from './postprocessing/UnrealGlowEffect';
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 
 // const MESH_PATH = '/assets/meshes/light_color.glb';
-const MESH_PATH = '/assets/meshes/cube_color.glb';
+const MESH_PATH = '/assets/meshes/tesseract_color.glb';
 
 export class WebGPUApp{
   private canvas: HTMLCanvasElement;
@@ -121,7 +121,7 @@ export class WebGPUApp{
     this.cameras = {
       arcball: new ArcballCamera({ position: WebGPUApp.CAMERA_POSITION }),
       WASD: new WASDCamera({ position: WebGPUApp.CAMERA_POSITION }),
-      head: new HeadTrackedCamera({ distance: 6 }), // new camera
+      head: new HeadTrackedCamera({ distance: 6, rotationHalfLife: 0.02, distanceHalfLife: 0.1 }), // new camera
     };
     this.oldCameraType = this.params.type;
     this.lastFrameMS = Date.now();
@@ -452,7 +452,7 @@ export class WebGPUApp{
     const minFov = 5 * Math.PI / 180;
     const maxFov = 140 * Math.PI / 180;
     fovY = Math.min(Math.max(fovY, minFov), maxFov);
-    this.projectionMatrix = mat4.perspective(fovY, this.aspect, 1, 100.0);
+    this.projectionMatrix = mat4.perspective(fovY, this.aspect, 1, 1000.0);
     if (this.projectionMatrixBuffer) {
       this.device.queue.writeBuffer(this.projectionMatrixBuffer, 0, this.projectionMatrix.buffer);
     }
