@@ -433,7 +433,7 @@ export class WebGPUApp{
     });
     this.gui.add(this.params, 'uTestValue_02', 3.0, 30.0).step(0.01).onChange((value) => {
       // Update GPU-side scalar if it's referenced separately
-      // this.updateFloatUniform('uTestValue_02', value);
+      this.updateFloatUniform('uTestValue_02', value);
       // Recompute the projection matrix with new parameter
       this.updateProjectionFromParam();
     });
