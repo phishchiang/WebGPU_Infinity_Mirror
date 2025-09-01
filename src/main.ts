@@ -165,14 +165,14 @@ export class WebGPUApp{
       return;
     }
 
-    // Resize overlay if needed
-    if (
-      this.landmarkCanvas.width !== this.webcam.videoWidth ||
-      this.landmarkCanvas.height !== this.webcam.videoHeight
-    ) {
-      this.landmarkCanvas.width = this.webcam.videoWidth;
-      this.landmarkCanvas.height = this.webcam.videoHeight;
-    }
+    // // Resize overlay if needed
+    // if (
+    //   this.landmarkCanvas.width !== this.webcam.videoWidth ||
+    //   this.landmarkCanvas.height !== this.webcam.videoHeight
+    // ) {
+    //   this.landmarkCanvas.width = this.webcam.videoWidth;
+    //   this.landmarkCanvas.height = this.webcam.videoHeight;
+    // }
 
     // Only run detection if the video frame has changed
     if (this.lastVideoTime !== this.webcam.currentTime) {
@@ -225,12 +225,7 @@ export class WebGPUApp{
     const TARGET_WIDTH = 480; // pick 320, 480, or 640
     // Request webcam access and stream to the video element
     navigator.mediaDevices.getUserMedia({ 
-      video: {
-        width: { ideal: TARGET_WIDTH, max: 640 },
-        height: { ideal: 360 }, // or leave out and let aspect follow camera
-        facingMode: 'user',     // front camera on mobile
-        frameRate: { ideal: 30, max: 60 },
-      },
+      video: true,
       audio: false,
     }).then((stream) => {
       this.webcam.srcObject = stream;
