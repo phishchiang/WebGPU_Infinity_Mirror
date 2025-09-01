@@ -135,10 +135,10 @@ export class WebGPUApp{
     this.viewMatrix = mat4.identity();
     this.projectionMatrix = mat4.identity();
 
-    // this.webcam.addEventListener("loadeddata", () => {
-    //   this.landmarkCanvas.width = this.webcam.videoWidth;
-    //   this.landmarkCanvas.height = this.webcam.videoHeight;
-    // });
+    this.webcam.addEventListener("loadeddata", () => {
+      this.landmarkCanvas.width = this.webcam.videoWidth;
+      this.landmarkCanvas.height = this.webcam.videoHeight;
+    });
 
     this.setupAndRender();
   }
