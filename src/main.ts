@@ -17,7 +17,8 @@ import { GlowAddEffect } from './postprocessing/GlowAddEffect';
 import { UnrealGlowEffect } from './postprocessing/UnrealGlowEffect';
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 
-const MESH_PATH = '/assets/meshes/light_color.glb';
+// const MESH_PATH = '/assets/meshes/light_color.glb';
+const MESH_PATH = '/assets/meshes/cube_color.glb';
 
 export class WebGPUApp{
   private canvas: HTMLCanvasElement;
@@ -41,7 +42,7 @@ export class WebGPUApp{
   } = {
     type: 'head',
     uTestValue: 1.0,
-    uTestValue_02: 1.0,
+    uTestValue_02: 0.0,
     uGlow_Threshold: 0.5,
     uGlow_ThresholdKnee: 0.1,
     uGlow_Radius: 3.0,
@@ -525,6 +526,10 @@ export class WebGPUApp{
       magFilter: 'linear',
       minFilter: 'linear',
       mipmapFilter: 'linear',
+      // Wrap UVs instead of clamping (prevents edge pixel stretch when >1 or <0)
+      addressModeU: 'repeat',
+      addressModeV: 'repeat',
+      addressModeW: 'repeat',
     });
 
     this.depthTexture = this.device.createTexture({
