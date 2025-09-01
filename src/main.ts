@@ -42,7 +42,7 @@ export class WebGPUApp{
   } = {
     type: 'head',
     uTestValue: 1.0,
-    uTestValue_02: 0.0,
+    uTestValue_02: 5.0,
     uGlow_Threshold: 0.5,
     uGlow_ThresholdKnee: 0.1,
     uGlow_Radius: 3.0,
@@ -296,8 +296,9 @@ export class WebGPUApp{
 
   private initCam(){
     this.aspect = this.canvas.width / this.canvas.height;
-    this.projectionMatrix = mat4.perspective((2 * Math.PI) / 5, this.aspect, 1, 100.0);
-    
+    // Use GUI-controlled uTestValue_02 to derive vertical FOV
+    this.updateProjectionFromParam();
+
     const devicePixelRatio = window.devicePixelRatio;
     this.canvas.width = this.canvas.clientWidth * devicePixelRatio;
     this.canvas.height = this.canvas.clientHeight * devicePixelRatio;
@@ -386,8 +387,8 @@ export class WebGPUApp{
     this.canvas.width = this.canvas.clientWidth * devicePixelRatio;
     this.canvas.height = this.canvas.clientHeight * devicePixelRatio;
 
-    this.aspect = this.canvas.width / this.canvas.height;
-    this.projectionMatrix = mat4.perspective((2 * Math.PI) / 5, this.aspect, 1, 100.0);
+  this.aspect = this.canvas.width / this.canvas.height;
+  this.updateProjectionFromParam();
     this.context.configure({
       device: this.device,
       format: navigator.gpu.getPreferredCanvasFormat(),
@@ -430,8 +431,11 @@ export class WebGPUApp{
     this.gui.add(this.params, 'uTestValue', 0.0, 1.0).step(0.01).onChange((value) => {
       this.updateFloatUniform( 'uTestValue', value );
     });
-    this.gui.add(this.params, 'uTestValue_02', 0.0, 1.0).step(0.01).onChange((value) => {
-      this.updateFloatUniform( 'uTestValue_02', value );
+    this.gui.add(this.params, 'uTestValue_02', 3.0, 30.0).step(0.01).onChange((value) => {
+      // Update GPU-side scalar if it's referenced separately
+      // this.updateFloatUniform('uTestValue_02', value);
+      // Recompute the projection matrix with new parameter
+      this.updateProjectionFromParam();
     });
     
     const glowFolder = this.gui.addFolder('Glow FX');
@@ -440,6 +444,23 @@ export class WebGPUApp{
     glowFolder.add(this.params, 'uGlow_Radius', 0.1, 20.0).step(0.1).onChange(() => this.updateGlowUniforms());
     glowFolder.add(this.params, 'uGlow_Intensity', 0.0, 1.0).step(0.001).onChange(() => this.updateGlowUniforms());
     glowFolder.open();
+  }
+
+  // Map uTestValue_02 -> vertical FOV and upload projection matrix
+  private updateProjectionFromParam() {
+    if (!this.aspect) this.aspect = this.canvas.width / this.canvas.height;
+    // Prevent division by zero
+    const p = Math.max(0.001, this.params.uTestValue_02);
+    // Chosen relation: fovY = 2π / p. For p=5 -> ~72° ; p larger => smaller FOV (telephoto)
+    let fovY = (2 * Math.PI) / p;
+    // Clamp to practical range (5° .. 140°)
+    const minFov = 5 * Math.PI / 180;
+    const maxFov = 140 * Math.PI / 180;
+    fovY = Math.min(Math.max(fovY, minFov), maxFov);
+    this.projectionMatrix = mat4.perspective(fovY, this.aspect, 1, 100.0);
+    if (this.projectionMatrixBuffer) {
+      this.device.queue.writeBuffer(this.projectionMatrixBuffer, 0, this.projectionMatrix.buffer);
+    }
   }
 
   private updateGlowUniforms() {

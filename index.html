@@ -34,25 +34,13 @@
         flex-direction: column;
         align-items: stretch;
       }
-      #webcam {
-        display: block;
-        width: auto;                   /* use intrinsic width */
-        height: auto;                  /* keep aspect */
-        max-width: 480px;              /* cap size */
-        max-height: 270px;             /* (optional) ~ 480 * 9/16 */
-        transform: scaleX(-1);         /* mirror */
-        border: 1px solid rgba(255,255,255,0.25);
-        background: #000;
-        object-fit: cover;             /* safe if camera aspect differs */
-      }
-
-      #landmark-canvas {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;                   /* match container (video) size */
+      #webcam, #landmark-canvas {
+        width: 100%;
         height: 100%;
-        transform: scaleX(-1);         /* mirror to align with video */
+        position: absolute;
+        top: 0; left: 0;
+        object-fit: cover;
+        background: #00000000;
         pointer-events: none;
       }
     </style>

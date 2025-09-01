@@ -26,7 +26,7 @@ fn vertex_main(input: VertexInput) -> VertexOutput {
     1.0, 0.0, 0.0, 0.0,  // Scale X by 1.0
     0.0, 1.0, 0.0, 0.0,  // Scale Y by 1.0
     0.0, 0.0, 1.0, 0.0,  // Scale Z by 1.0
-    0.0, uTestValue_02, 0.0, 1.0   // Translation along Y-axis
+    0.0, 0.0, -10.0, 1.0   // Translation along Y-axis
   );
 
   var transformedModelMatrix = modelMatrix * translateYMatrix;
