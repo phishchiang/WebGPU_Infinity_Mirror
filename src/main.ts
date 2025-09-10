@@ -18,7 +18,7 @@ import { UnrealGlowEffect } from './postprocessing/UnrealGlowEffect';
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 
 // const MESH_PATH = '/assets/meshes/light_color.glb';
-const MESH_PATH = '/assets/meshes/tesseract_color.glb';
+const MESH_PATH = '/assets/meshes/tesseract_color_v02.glb';
 
 export class WebGPUApp{
   private canvas: HTMLCanvasElement;
