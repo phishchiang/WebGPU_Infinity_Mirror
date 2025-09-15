@@ -29,6 +29,8 @@ export class WebGPUApp{
   private uniformBindGroup!: GPUBindGroup;
   private renderPassDescriptor!: GPURenderPassDescriptor;
   private cubeTexture!: GPUTexture;
+  private uniformBindGroupLayout!: GPUBindGroupLayout;
+  private videoTextureReady: boolean = false; 
   private cameras: { [key: string]: any };
   private aspect!: number;
   private params: { 
@@ -236,6 +238,7 @@ export class WebGPUApp{
           this.landmarkCanvas.height = this.webcam.videoHeight;
         }
         await this.loadFaceLandmarker();
+        this.initVideoTextureFromWebcam();
         this.webcamRunning = true;
         this.predictWebcam();
       }, { once: true });
@@ -299,6 +302,36 @@ export class WebGPUApp{
     this.canvas.height = this.canvas.clientHeight * devicePixelRatio;
 
     this.device.queue.writeBuffer(this.projectionMatrixBuffer, 0, this.projectionMatrix.buffer);
+  }
+
+  private initVideoTextureFromWebcam() {
+    const w = this.webcam.videoWidth | 0;
+    const h = this.webcam.videoHeight | 0;
+    if (!w || !h) return;
+
+    this.cubeTexture = this.device.createTexture({
+      size: [w, h, 1],
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+
+    // Recreate the bind group with the new texture view
+    this.uniformBindGroup = this.device.createBindGroup({
+      layout: this.uniformBindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: this.viewMatrixBuffer } },
+        { binding: 1, resource: { buffer: this.projectionMatrixBuffer } },
+        { binding: 2, resource: { buffer: this.canvasSizeBuffer } },
+        { binding: 3, resource: { buffer: this.uTimeBuffer } },
+        { binding: 4, resource: { buffer: this.modelMatrixBuffer } },
+        { binding: 5, resource: { buffer: this.uTestValueBuffer } },
+        { binding: 6, resource: { buffer: this.uTestValue_02Buffer } },
+        { binding: 7, resource: this.sampler },
+        { binding: 8, resource: this.cubeTexture.createView() },
+      ],
+    });
+
+    this.videoTextureReady = true;
   }
 
   private async loadTexture() {
@@ -574,7 +607,7 @@ export class WebGPUApp{
 
   private initPipelineBindGrp() {
 
-    const uniformBindGroupLayout = this.device.createBindGroupLayout({
+    this.uniformBindGroupLayout = this.device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // viewMatrix
         { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // projectionMatrix
@@ -590,7 +623,7 @@ export class WebGPUApp{
 
     this.pipeline = this.device.createRenderPipeline({
       layout: this.device.createPipelineLayout({
-        bindGroupLayouts: [uniformBindGroupLayout],
+        bindGroupLayouts: [this.uniformBindGroupLayout],
       }),
       vertex: {
         module: this.device.createShaderModule({ code: basicWGSL }),
@@ -614,7 +647,7 @@ export class WebGPUApp{
     });
 
     this.uniformBindGroup = this.device.createBindGroup({
-      layout: uniformBindGroupLayout,
+      layout: this.uniformBindGroupLayout,
       entries: [
         { binding: 0, resource: { buffer: this.viewMatrixBuffer } },
         { binding: 1, resource: { buffer: this.projectionMatrixBuffer } },
@@ -706,6 +739,15 @@ export class WebGPUApp{
 
     this.viewMatrix = this.getViewMatrix(deltaTime);
     this.device.queue.writeBuffer(this.viewMatrixBuffer, 0, this.viewMatrix.buffer);
+
+    if (this.videoTextureReady && this.webcam.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      this.device.queue.copyExternalImageToTexture(
+        { source: this.webcam, flipY: false }, // set flipY=false if your UVs already expect top-left origin
+        { texture: this.cubeTexture },
+        [this.webcam.videoWidth, this.webcam.videoHeight]
+      );
+    }
+    
     // Set up a render pass target based on post-processing effects
     if (this.postProcessEffects.length === 0) {
       (this.renderPassDescriptor.colorAttachments as GPURenderPassColorAttachment[])[0].view = this.context.getCurrentTexture().createView();
