@@ -46,7 +46,9 @@ struct FragmentInput {
 
 @fragment
 fn fragment_main(input: FragmentInput) -> @location(0) vec4f {
-  var finalColor: vec4f = textureSample(myTexture, mySampler, input.frag_uv);
+  var flipped_uv = input.frag_uv;
+  flipped_uv.x = 1.0 - flipped_uv.x; // flip horizontally
+  var finalColor: vec4f = textureSample(myTexture, mySampler, flipped_uv);
   finalColor *= uTestValue;
   return finalColor;
 }
