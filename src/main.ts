@@ -91,7 +91,7 @@ export class WebGPUApp{
   private blurEffectV!: BlurEffect;
   private glowAddEffect!: GlowAddEffect;
   private unrealGlowEffect!: UnrealGlowEffect;
-  private enableGlow: boolean = true; // or control with GUI
+  private enableGlow: boolean = false; // or control with GUI
   // Head camera placeholder state (until real face tracking integration)
   private headYaw = 0;
   private headPitch = 0;
@@ -705,7 +705,7 @@ export class WebGPUApp{
     // Add post-processing effects
     this.postProcessEffects.push(
       // new GrayscaleEffect(this.device, this.presentationFormat, this.sampler),
-      this.brightPassEffect,
+      // this.brightPassEffect,
       new FXAAEffect(this.device, this.presentationFormat, this.sampler, [this.canvas.width, this.canvas.height]),
     );
 
