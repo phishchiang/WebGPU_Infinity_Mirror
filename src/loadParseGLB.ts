@@ -5,7 +5,7 @@ export async function loadAndProcessGLB(
   url: string
 ): Promise<{
   interleavedData: Float32Array;
-  indices: Uint16Array | undefined;
+  indices: Uint32Array | undefined;
   indexCount: number;
   vertexLayout: { arrayStride: number; attributes: GPUVertexAttribute[] };
 }> {
@@ -28,7 +28,7 @@ export async function loadAndProcessGLB(
   }
 
   const vertices = new Float32Array(positionAccessor!.getArray()!);
-  const indices = indicesAccessor ? new Uint16Array(indicesAccessor.getArray()!) : undefined;
+  const indices = indicesAccessor ? new Uint32Array(indicesAccessor.getArray()!) : undefined;
   const vertexNormal = normalAccessor ? new Float32Array(normalAccessor.getArray()!) : undefined;
   const uvs = uvAccessor ? new Float32Array(uvAccessor.getArray()!) : undefined;
   const colors = colorAccessor ? new Float32Array(colorAccessor.getArray()!) : undefined;

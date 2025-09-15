@@ -18,7 +18,7 @@ import { UnrealGlowEffect } from './postprocessing/UnrealGlowEffect';
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 
 // const MESH_PATH = '/assets/meshes/light_color.glb';
-const MESH_PATH = '/assets/meshes/tesseract_color_v02.glb';
+const MESH_PATH = '/assets/meshes/tesseract_color_v03.glb';
 
 export class WebGPUApp{
   private canvas: HTMLCanvasElement;
@@ -279,7 +279,7 @@ export class WebGPUApp{
         usage: GPUBufferUsage.INDEX,
         mappedAtCreation: true,
       });
-      new Uint16Array(indexBuffer.getMappedRange()).set(indices);
+      new Uint32Array(indexBuffer.getMappedRange()).set(indices);
       indexBuffer.unmap();
     }
 
@@ -723,7 +723,7 @@ export class WebGPUApp{
     passEncoder.setPipeline(this.pipeline);
     passEncoder.setBindGroup(0, this.uniformBindGroup);
     passEncoder.setVertexBuffer(0, this.loadVerticesBuffer);
-    passEncoder.setIndexBuffer(this.loadIndexBuffer!, 'uint16');
+    passEncoder.setIndexBuffer(this.loadIndexBuffer!, 'uint32');
     passEncoder.drawIndexed(this.loadIndexCount);
     passEncoder.end();
 
