@@ -10,6 +10,7 @@ import { PostProcessEffect } from './postprocessing/PostProcessEffect';
 import { PassThroughEffect } from './postprocessing/PassThroughEffect';
 import { GrayscaleEffect } from './postprocessing/GrayscaleEffect';
 import { FXAAEffect } from './postprocessing/FXAAEffect';
+import { DepthCompEffect } from './postprocessing/DepthCompEffect';
 // Glow FX imports
 import { BrightPassEffect } from './postprocessing/BrightPassEffect';
 import { BlurEffect } from './postprocessing/GaussianBlurEffect';
@@ -85,6 +86,7 @@ export class WebGPUApp{
   private static readonly CLEAR_COLOR = [0.1, 0.1, 0.1, 1.0];
   private static readonly CAMERA_POSITION = vec3.create(3, 2, 5);
   private passThroughEffect!: PassThroughEffect;
+  private depthCompEffect!: DepthCompEffect;
   // Glow FX Variables
   private brightPassEffect!: BrightPassEffect;
   private blurEffectH!: BlurEffect;
@@ -431,7 +433,7 @@ export class WebGPUApp{
     this.depthTexture = this.device.createTexture({
       size: [this.canvas.width, this.canvas.height],
       format: 'depth24plus',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
 
     // Resize the render targets
@@ -584,7 +586,7 @@ export class WebGPUApp{
     this.depthTexture = this.device.createTexture({
       size: [this.canvas.width, this.canvas.height],
       format: 'depth24plus',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
 
     this.renderPassDescriptor = {
@@ -702,11 +704,13 @@ export class WebGPUApp{
     this.passThroughEffect = new PassThroughEffect(this.device, this.presentationFormat, this.sampler);
 
     this.brightPassEffect = new BrightPassEffect(this.device, this.presentationFormat, this.sampler, this.params.uGlow_Threshold, this.params.uGlow_ThresholdKnee);
+    this.depthCompEffect = new DepthCompEffect(this.device, this.presentationFormat, this.sampler);
     // Add post-processing effects
     this.postProcessEffects.push(
       // new GrayscaleEffect(this.device, this.presentationFormat, this.sampler),
       // this.brightPassEffect,
       new FXAAEffect(this.device, this.presentationFormat, this.sampler, [this.canvas.width, this.canvas.height]),
+      // this.depthCompEffect,
     );
 
     this.blurEffectH = new BlurEffect(this.device, this.presentationFormat, this.sampler, [1.0, 0.0], [1 / this.canvas.width, 1 / this.canvas.height], this.params.uGlow_Radius );
@@ -768,6 +772,9 @@ export class WebGPUApp{
     passEncoder.setIndexBuffer(this.loadIndexBuffer!, 'uint32');
     passEncoder.drawIndexed(this.loadIndexCount);
     passEncoder.end();
+
+    // Provide depth to the effect (view can be recreated each frame)
+    this.depthCompEffect.setDepthTexture(this.depthTexture.createView());
 
     // Apply post-processing effects if any
     let finalOutputView = this.renderTarget_ping.view;
