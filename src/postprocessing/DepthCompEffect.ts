@@ -7,19 +7,17 @@ export class DepthCompEffect implements PostProcessEffect {
   private bindGroupLayout: GPUBindGroupLayout;
   private sampler: GPUSampler;
   private depthView: GPUTextureView | null = null;
-  private depthCmpSampler: GPUSampler;
 
-  constructor(device: GPUDevice, format: GPUTextureFormat, sampler: GPUSampler) {
+  constructor(device: GPUDevice, format: GPUTextureFormat, sampler: GPUSampler, depthView: GPUTextureView) {
     this.device = device;
     this.sampler = sampler;
-    this.depthCmpSampler = device.createSampler({ compare: 'less' });
+    this.depthView = depthView;
 
     this.bindGroupLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth' } },
-        { binding: 3, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'comparison' } },
       ],
     });
 
@@ -42,7 +40,7 @@ export class DepthCompEffect implements PostProcessEffect {
     });
   }
 
-  public setDepthTexture(view: GPUTextureView) {
+  public setDepthView(view: GPUTextureView) {
     this.depthView = view;
   }
 
@@ -75,7 +73,6 @@ export class DepthCompEffect implements PostProcessEffect {
         { binding: 0, resource: this.sampler },
         { binding: 1, resource: inputView },
         { binding: 2, resource: this.depthView },
-        { binding: 3, resource: this.depthCmpSampler },
       ],
     });
 

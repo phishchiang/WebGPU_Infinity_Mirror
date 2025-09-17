@@ -435,6 +435,13 @@ export class WebGPUApp{
       format: 'depth24plus',
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
+    // Update the depth attachment
+    this.renderPassDescriptor.depthStencilAttachment!.view = this.depthTexture.createView();
+
+    // Keep the effect’s depth view in sync
+    if (this.depthCompEffect) {
+      this.depthCompEffect.setDepthView(this.depthTexture.createView());
+    }
 
     // Resize the render targets
     this.renderTarget_ping.resize(this.device, this.canvas.width, this.canvas.height, this.presentationFormat);
@@ -559,7 +566,8 @@ export class WebGPUApp{
   }
 
   private async initializeWebGPU() {
-    const adapter = await navigator.gpu?.requestAdapter({ featureLevel: 'compatibility' });
+    // const adapter = await navigator.gpu?.requestAdapter({ featureLevel: 'compatibility' });
+    const adapter = await navigator.gpu?.requestAdapter();
     this.device = await adapter?.requestDevice() as GPUDevice;
 
     this.context = this.canvas.getContext('webgpu') as GPUCanvasContext;
@@ -704,13 +712,13 @@ export class WebGPUApp{
     this.passThroughEffect = new PassThroughEffect(this.device, this.presentationFormat, this.sampler);
 
     this.brightPassEffect = new BrightPassEffect(this.device, this.presentationFormat, this.sampler, this.params.uGlow_Threshold, this.params.uGlow_ThresholdKnee);
-    this.depthCompEffect = new DepthCompEffect(this.device, this.presentationFormat, this.sampler);
+    this.depthCompEffect = new DepthCompEffect(this.device, this.presentationFormat, this.sampler, this.depthTexture.createView());
     // Add post-processing effects
     this.postProcessEffects.push(
       // new GrayscaleEffect(this.device, this.presentationFormat, this.sampler),
       // this.brightPassEffect,
       new FXAAEffect(this.device, this.presentationFormat, this.sampler, [this.canvas.width, this.canvas.height]),
-      // this.depthCompEffect,
+      this.depthCompEffect,
     );
 
     this.blurEffectH = new BlurEffect(this.device, this.presentationFormat, this.sampler, [1.0, 0.0], [1 / this.canvas.width, 1 / this.canvas.height], this.params.uGlow_Radius );
@@ -774,7 +782,7 @@ export class WebGPUApp{
     passEncoder.end();
 
     // Provide depth to the effect (view can be recreated each frame)
-    this.depthCompEffect.setDepthTexture(this.depthTexture.createView());
+    this.depthCompEffect.setDepthView(this.depthTexture.createView());
 
     // Apply post-processing effects if any
     let finalOutputView = this.renderTarget_ping.view;
