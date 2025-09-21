@@ -30,6 +30,7 @@ export class WebGPUApp{
   private uniformBindGroup!: GPUBindGroup;
   private renderPassDescriptor!: GPURenderPassDescriptor;
   private cubeTexture!: GPUTexture;
+  private maskTexture!: GPUTexture;
   private uniformBindGroupLayout!: GPUBindGroupLayout;
   private videoTextureReady: boolean = false; 
   private cameras: { [key: string]: any };
@@ -330,6 +331,7 @@ export class WebGPUApp{
         { binding: 6, resource: { buffer: this.uTestValue_02Buffer } },
         { binding: 7, resource: this.sampler },
         { binding: 8, resource: this.cubeTexture.createView() },
+        { binding: 9, resource: this.maskTexture.createView() },
       ],
     });
 
@@ -337,19 +339,31 @@ export class WebGPUApp{
   }
 
   private async loadTexture() {
-    const response = await fetch('../assets/img/uv1.png');
-    const imageBitmap = await createImageBitmap(await response.blob());
+    const response_01 = await fetch('../assets/img/uv1.png');
+    const imageBitmap_01 = await createImageBitmap(await response_01.blob());
+    const response_02 = await fetch('../assets/img/noise_mask.png');
+    const imageBitmap_02 = await createImageBitmap(await response_02.blob());
 
     this.cubeTexture = this.device.createTexture({
-      size: [imageBitmap.width, imageBitmap.height, 1],
+      size: [imageBitmap_01.width, imageBitmap_01.height, 1],
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    this.maskTexture = this.device.createTexture({
+      size: [imageBitmap_02.width, imageBitmap_02.height, 1],
       format: 'rgba8unorm',
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
     });
 
     this.device.queue.copyExternalImageToTexture(
-      { source: imageBitmap },
+      { source: imageBitmap_01 },
       { texture: this.cubeTexture },
-      [imageBitmap.width, imageBitmap.height]
+      [imageBitmap_01.width, imageBitmap_01.height]
+    );
+    this.device.queue.copyExternalImageToTexture(
+      { source: imageBitmap_02 },
+      { texture: this.maskTexture },
+      [imageBitmap_02.width, imageBitmap_02.height]
     );
   }
 
@@ -628,6 +642,7 @@ export class WebGPUApp{
         { binding: 6, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // uTestValue_02
         { binding: 7, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } }, // Sampler
         { binding: 8, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } }, // Texture
+        { binding: 9, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } }, // Texture
       ],
     });
 
@@ -668,6 +683,7 @@ export class WebGPUApp{
         { binding: 6, resource: { buffer: this.uTestValue_02Buffer } },
         { binding: 7, resource: this.sampler },
         { binding: 8, resource: this.cubeTexture.createView() },
+        { binding: 9, resource: this.maskTexture.createView() },
       ],
     });
   }
