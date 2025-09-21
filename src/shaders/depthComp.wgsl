@@ -45,7 +45,7 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
   // return vec4<f32>(depth, depth, depth, 1.0);
 
 
-  var black = 0.9;
+  var black = 0.95;
   var white = 1.0;
   var gamma = 1.0;
   var invert = 1.0;
@@ -60,5 +60,11 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     t = 1.0 - t;
   }
 
-  return vec4<f32>(t, t, t, 1.0);
+  // Compp
+  // use math exponential to increase contrast
+  // var contrast_T = exp(3.0 * (t - 1.0));
+  var comp = textureSample(myTexture, mySampler, uv) * t;
+
+  // return vec4<f32>(t, t, t, 1.0);
+  return comp;
 }
