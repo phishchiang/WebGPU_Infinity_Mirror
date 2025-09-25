@@ -2,7 +2,7 @@ export class getVertexLayout {
     private attributes: GPUVertexAttribute[] = [];
     private offset: number = 0;
   
-    constructor(private vertexFormat: { position: boolean; normal?: boolean; color?: boolean; uv?: boolean }) {}
+    constructor(private vertexFormat: { position: boolean; normal?: boolean; color?: boolean; uv?: boolean; uv1?: boolean; }) {}
   
     build(): { arrayStride: number; attributes: GPUVertexAttribute[] } {
       this.attributes = [];
@@ -13,7 +13,7 @@ export class getVertexLayout {
       if (this.vertexFormat.normal) this.addAttribute(shaderLocation++, 'float32x3', 3); // Normal
       if (this.vertexFormat.color) this.addAttribute(shaderLocation++, 'float32x4', 4); // Color
       if (this.vertexFormat.uv) this.addAttribute(shaderLocation++, 'float32x2', 2); // UV
-  
+      if (this.vertexFormat.uv1)      this.addAttribute(shaderLocation++, 'float32x2', 2); // UV1 (TEXCOORD_1)
       return {
         arrayStride: this.offset,
         attributes: this.attributes,

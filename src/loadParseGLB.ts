@@ -19,6 +19,7 @@ export async function loadAndProcessGLB(
   const primitive = mesh.listPrimitives()[0]; // Assuming the first primitive
   const positionAccessor = primitive.getAttribute('POSITION');
   const uvAccessor = primitive.getAttribute('TEXCOORD_0');
+  const uv1Accessor = primitive.getAttribute('TEXCOORD_1'); 
   const normalAccessor = primitive.getAttribute('NORMAL');
   const colorAccessor = primitive.getAttribute('COLOR_0');
   const indicesAccessor = primitive.getIndices();
@@ -31,6 +32,7 @@ export async function loadAndProcessGLB(
   const indices = indicesAccessor ? new Uint32Array(indicesAccessor.getArray()!) : undefined;
   const vertexNormal = normalAccessor ? new Float32Array(normalAccessor.getArray()!) : undefined;
   const uvs = uvAccessor ? new Float32Array(uvAccessor.getArray()!) : undefined;
+  const uvs1 = uv1Accessor ? new Float32Array(uv1Accessor.getArray()!) : undefined; 
   const colors = colorAccessor ? new Float32Array(colorAccessor.getArray()!) : undefined;
 
   // console.log('Original GLB vertex order:');
@@ -46,12 +48,17 @@ export async function loadAndProcessGLB(
     console.error('UV count does not match vertex count!');
     throw new Error('UV count does not match vertex count!');
   }
+    if (uvs1 && uvs1.length / 2 !== vertices.length / 3) { // NEW
+    console.error('UV1 count does not match vertex count!');
+    throw new Error('UV1 count does not match vertex count!');
+  }
 
   const vertexLayout = new getVertexLayout({
     position: vertices.length > 0,
     normal: vertexNormal && vertexNormal.length > 0,
     color: colors && colors.length > 0,
     uv: uvs && uvs.length > 0,
+    uv1: uvs1 && uvs1.length > 0,
   }).build();
 
   // Interleave positions, normals, colors, and UVs into a single array
@@ -74,6 +81,10 @@ export async function loadAndProcessGLB(
     if (uvs && uvs.length > 0) {
       interleavedData[j++] = uvs[i * 2 + 0]; // u
       interleavedData[j++] = uvs[i * 2 + 1]; // v
+    }
+    if (uvs1 && uvs1.length > 0) {           // NEW
+      interleavedData[j++] = uvs1[i * 2 + 0]; // u1
+      interleavedData[j++] = uvs1[i * 2 + 1]; // v1
     }
   }
 
