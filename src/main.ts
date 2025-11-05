@@ -10,6 +10,7 @@ import { PostProcessEffect } from './postprocessing/PostProcessEffect';
 import { PassThroughEffect } from './postprocessing/PassThroughEffect';
 import { GrayscaleEffect } from './postprocessing/GrayscaleEffect';
 import { FXAAEffect } from './postprocessing/FXAAEffect';
+import { DepthCompEffect } from './postprocessing/DepthCompEffect';
 // Glow FX imports
 import { BrightPassEffect } from './postprocessing/BrightPassEffect';
 import { BlurEffect } from './postprocessing/GaussianBlurEffect';
@@ -29,6 +30,7 @@ export class WebGPUApp{
   private uniformBindGroup!: GPUBindGroup;
   private renderPassDescriptor!: GPURenderPassDescriptor;
   private cubeTexture!: GPUTexture;
+  private maskTexture!: GPUTexture;
   private uniformBindGroupLayout!: GPUBindGroupLayout;
   private videoTextureReady: boolean = false; 
   private cameras: { [key: string]: any };
@@ -85,6 +87,7 @@ export class WebGPUApp{
   private static readonly CLEAR_COLOR = [0.1, 0.1, 0.1, 1.0];
   private static readonly CAMERA_POSITION = vec3.create(3, 2, 5);
   private passThroughEffect!: PassThroughEffect;
+  private depthCompEffect!: DepthCompEffect;
   // Glow FX Variables
   private brightPassEffect!: BrightPassEffect;
   private blurEffectH!: BlurEffect;
@@ -328,6 +331,7 @@ export class WebGPUApp{
         { binding: 6, resource: { buffer: this.uTestValue_02Buffer } },
         { binding: 7, resource: this.sampler },
         { binding: 8, resource: this.cubeTexture.createView() },
+        { binding: 9, resource: this.maskTexture.createView() },
       ],
     });
 
@@ -335,19 +339,31 @@ export class WebGPUApp{
   }
 
   private async loadTexture() {
-    const response = await fetch('../assets/img/uv1.png');
-    const imageBitmap = await createImageBitmap(await response.blob());
+    const response_01 = await fetch('../assets/img/uv1.png');
+    const imageBitmap_01 = await createImageBitmap(await response_01.blob());
+    const response_02 = await fetch('../assets/img/noise_mask.png');
+    const imageBitmap_02 = await createImageBitmap(await response_02.blob());
 
     this.cubeTexture = this.device.createTexture({
-      size: [imageBitmap.width, imageBitmap.height, 1],
+      size: [imageBitmap_01.width, imageBitmap_01.height, 1],
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    this.maskTexture = this.device.createTexture({
+      size: [imageBitmap_02.width, imageBitmap_02.height, 1],
       format: 'rgba8unorm',
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
     });
 
     this.device.queue.copyExternalImageToTexture(
-      { source: imageBitmap },
+      { source: imageBitmap_01 },
       { texture: this.cubeTexture },
-      [imageBitmap.width, imageBitmap.height]
+      [imageBitmap_01.width, imageBitmap_01.height]
+    );
+    this.device.queue.copyExternalImageToTexture(
+      { source: imageBitmap_02 },
+      { texture: this.maskTexture },
+      [imageBitmap_02.width, imageBitmap_02.height]
     );
   }
 
@@ -431,8 +447,15 @@ export class WebGPUApp{
     this.depthTexture = this.device.createTexture({
       size: [this.canvas.width, this.canvas.height],
       format: 'depth24plus',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
+    // Update the depth attachment
+    this.renderPassDescriptor.depthStencilAttachment!.view = this.depthTexture.createView();
+
+    // Keep the effect’s depth view in sync
+    if (this.depthCompEffect) {
+      this.depthCompEffect.setDepthView(this.depthTexture.createView());
+    }
 
     // Resize the render targets
     this.renderTarget_ping.resize(this.device, this.canvas.width, this.canvas.height, this.presentationFormat);
@@ -557,7 +580,8 @@ export class WebGPUApp{
   }
 
   private async initializeWebGPU() {
-    const adapter = await navigator.gpu?.requestAdapter({ featureLevel: 'compatibility' });
+    // const adapter = await navigator.gpu?.requestAdapter({ featureLevel: 'compatibility' });
+    const adapter = await navigator.gpu?.requestAdapter();
     this.device = await adapter?.requestDevice() as GPUDevice;
 
     this.context = this.canvas.getContext('webgpu') as GPUCanvasContext;
@@ -584,7 +608,7 @@ export class WebGPUApp{
     this.depthTexture = this.device.createTexture({
       size: [this.canvas.width, this.canvas.height],
       format: 'depth24plus',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
 
     this.renderPassDescriptor = {
@@ -618,6 +642,7 @@ export class WebGPUApp{
         { binding: 6, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // uTestValue_02
         { binding: 7, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } }, // Sampler
         { binding: 8, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } }, // Texture
+        { binding: 9, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } }, // Texture
       ],
     });
 
@@ -658,6 +683,7 @@ export class WebGPUApp{
         { binding: 6, resource: { buffer: this.uTestValue_02Buffer } },
         { binding: 7, resource: this.sampler },
         { binding: 8, resource: this.cubeTexture.createView() },
+        { binding: 9, resource: this.maskTexture.createView() },
       ],
     });
   }
@@ -702,11 +728,13 @@ export class WebGPUApp{
     this.passThroughEffect = new PassThroughEffect(this.device, this.presentationFormat, this.sampler);
 
     this.brightPassEffect = new BrightPassEffect(this.device, this.presentationFormat, this.sampler, this.params.uGlow_Threshold, this.params.uGlow_ThresholdKnee);
+    this.depthCompEffect = new DepthCompEffect(this.device, this.presentationFormat, this.sampler, this.depthTexture.createView());
     // Add post-processing effects
     this.postProcessEffects.push(
       // new GrayscaleEffect(this.device, this.presentationFormat, this.sampler),
       // this.brightPassEffect,
       new FXAAEffect(this.device, this.presentationFormat, this.sampler, [this.canvas.width, this.canvas.height]),
+      this.depthCompEffect,
     );
 
     this.blurEffectH = new BlurEffect(this.device, this.presentationFormat, this.sampler, [1.0, 0.0], [1 / this.canvas.width, 1 / this.canvas.height], this.params.uGlow_Radius );
@@ -768,6 +796,9 @@ export class WebGPUApp{
     passEncoder.setIndexBuffer(this.loadIndexBuffer!, 'uint32');
     passEncoder.drawIndexed(this.loadIndexCount);
     passEncoder.end();
+
+    // Provide depth to the effect (view can be recreated each frame)
+    this.depthCompEffect.setDepthView(this.depthTexture.createView());
 
     // Apply post-processing effects if any
     let finalOutputView = this.renderTarget_ping.view;
