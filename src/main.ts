@@ -20,18 +20,22 @@ import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 
 // const MESH_PATH = '/assets/meshes/light_color.glb';
 const MESH_PATH = '/assets/meshes/tesseract_color_v03.glb';
+const CAM_MESH_PATH = '/assets/meshes/cam_1000.glb';
 
 export class WebGPUApp{
   private canvas: HTMLCanvasElement;
   private device!: GPUDevice;
   private context!: GPUCanvasContext;
   private pipeline!: GPURenderPipeline;
+  private camPipeline!: GPURenderPipeline;
   private presentationFormat!: GPUTextureFormat;
   private uniformBindGroup!: GPUBindGroup;
+  private camUniformBindGroup!: GPUBindGroup;
   private renderPassDescriptor!: GPURenderPassDescriptor;
   private cubeTexture!: GPUTexture;
   private maskTexture!: GPUTexture;
   private uniformBindGroupLayout!: GPUBindGroupLayout;
+  private camUniformBindGroupLayout!: GPUBindGroupLayout;
   private videoTextureReady: boolean = false; 
   private cameras: { [key: string]: any };
   private aspect!: number;
@@ -57,8 +61,11 @@ export class WebGPUApp{
   private lastFrameMS: number;
   private demoVerticesBuffer!: GPUBuffer;
   private loadVerticesBuffer!: GPUBuffer;
+  private camLoadVerticesBuffer!: GPUBuffer;
   private loadIndexBuffer!: GPUBuffer | undefined;
+  private camLoadIndexBuffer!: GPUBuffer | undefined;
   private loadIndexCount!: number;
+  private camLoadIndexCount!: number;
   private uniformBuffer!: GPUBuffer;
   private sceneUniformBuffer!: GPUBuffer;
   private objectUniformBuffer!: GPUBuffer;
@@ -67,10 +74,13 @@ export class WebGPUApp{
   private canvasSizeBuffer!: GPUBuffer;
   private uTimeBuffer!: GPUBuffer;
   private modelMatrixBuffer!: GPUBuffer;
+  private camModelMatrixBuffer!: GPUBuffer;
   private uTestValueBuffer!: GPUBuffer;
   private uTestValue_02Buffer!: GPUBuffer;
   private loadVertexLayout!: { arrayStride: number; attributes: GPUVertexAttribute[]; };
+  private camLoadVertexLayout!: { arrayStride: number; attributes: GPUVertexAttribute[]; };
   private modelMatrix: Float32Array;
+  private camModelMatrix: Float32Array;
   private viewMatrix: Float32Array;
   private projectionMatrix: Float32Array;
   private depthTexture!: GPUTexture;
@@ -126,7 +136,7 @@ export class WebGPUApp{
     this.cameras = {
       arcball: new ArcballCamera({ position: WebGPUApp.CAMERA_POSITION }),
       WASD: new WASDCamera({ position: WebGPUApp.CAMERA_POSITION }),
-      head: new HeadTrackedCamera({ distance: 6, rotationHalfLife: 0.02, distanceHalfLife: 0.1 }), // new camera
+      head: new HeadTrackedCamera({ distance: 6, rotationHalfLife: 0.02, distanceHalfLife: 0.01 }), // new camera
     };
     this.oldCameraType = this.params.type;
     this.lastFrameMS = Date.now();
@@ -137,6 +147,7 @@ export class WebGPUApp{
 
     // Initialize matrices
     this.modelMatrix = mat4.identity();
+    this.camModelMatrix = mat4.identity();
     this.viewMatrix = mat4.identity();
     this.projectionMatrix = mat4.identity();
 
@@ -214,9 +225,10 @@ export class WebGPUApp{
         // }
 
         // Update head camera pose
-        if (this.params.type === 'head') {
-          this.updateHeadPoseFromLandmarks(landmarks as any);
-        }
+        // if (this.params.type === 'head') {
+        //   this.updateHeadPoseFromLandmarks(landmarks as any);
+        // }
+        this.updateHeadPoseFromLandmarks(landmarks as any);
 
       } else {
         // Clear overlay if no face
@@ -262,7 +274,7 @@ export class WebGPUApp{
 
   private async initLoadAndProcessGLB() {
     const { interleavedData, indices, indexCount, vertexLayout } = await loadAndProcessGLB(MESH_PATH);
-  
+    
     // Create vertex buffer
     const vertexBuffer = this.device.createBuffer({
       size: interleavedData.byteLength,
@@ -271,7 +283,7 @@ export class WebGPUApp{
     });
     new Float32Array(vertexBuffer.getMappedRange()).set(interleavedData);
     vertexBuffer.unmap();
-
+    
     // Create index buffer if indices exist
     let indexBuffer: GPUBuffer | undefined = undefined;
     if (indices) {
@@ -279,7 +291,7 @@ export class WebGPUApp{
       // Pad index buffer size to next multiple of 4 for avoiding alignment issues
       // WebGPU requires buffer sizes to be a multiple of 4 bytes
       const paddedIndexBufferSize = Math.ceil(indices.byteLength / 4) * 4;
-
+      
       indexBuffer = this.device.createBuffer({
         size: paddedIndexBufferSize,
         usage: GPUBufferUsage.INDEX,
@@ -288,11 +300,38 @@ export class WebGPUApp{
       new Uint32Array(indexBuffer.getMappedRange()).set(indices);
       indexBuffer.unmap();
     }
-
+    
     this.loadVerticesBuffer = vertexBuffer;
     this.loadIndexBuffer = indexBuffer;
     this.loadIndexCount = indexCount;
     this.loadVertexLayout = vertexLayout;
+
+    const { interleavedData: camInterleavedData, indices: camIndices, indexCount: camIndexCount, vertexLayout: camVertexLayout } = await loadAndProcessGLB(CAM_MESH_PATH);
+
+    const camVertexBuffer = this.device.createBuffer({
+      size: camInterleavedData.byteLength,
+      usage: GPUBufferUsage.VERTEX,
+      mappedAtCreation: true,
+    });
+    new Float32Array(camVertexBuffer.getMappedRange()).set(camInterleavedData);
+    camVertexBuffer.unmap();
+    let camIndexBuffer: GPUBuffer | undefined = undefined;
+    if (camIndices) {
+      const paddedIndexBufferSize = Math.ceil(camIndices.byteLength / 4) * 4;
+
+      camIndexBuffer = this.device.createBuffer({
+        size: paddedIndexBufferSize,
+        usage: GPUBufferUsage.INDEX,
+        mappedAtCreation: true,
+      });
+      new Uint32Array(camIndexBuffer.getMappedRange()).set(camIndices);
+      camIndexBuffer.unmap();
+    }
+
+    this.camLoadVerticesBuffer = camVertexBuffer;
+    this.camLoadIndexBuffer = camIndexBuffer;
+    this.camLoadIndexCount = camIndexCount;
+    this.camLoadVertexLayout = camVertexLayout;
   }
 
   private initCam(){
@@ -404,6 +443,13 @@ export class WebGPUApp{
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.device.queue.writeBuffer(this.modelMatrixBuffer, 0, this.modelMatrix.buffer);
+    
+    // Head Camera Model Matrix
+    this.camModelMatrixBuffer = this.device.createBuffer({
+      size: 16 * 4,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    this.device.queue.writeBuffer(this.camModelMatrixBuffer, 0, this.camModelMatrix.buffer);
 
     // uTestValue
     this.uTestValueBuffer = this.device.createBuffer({
@@ -545,15 +591,17 @@ export class WebGPUApp{
 
   private updateHeadPoseFromLandmarks(landmarks: { x: number; y: number; z?: number }[]) {
     if (landmarks.length < 264) return;
-    const left = landmarks[33];
+    const left = landmarks[33]; // outer edge of the right eye
     const right = landmarks[263];
-    const centerX = (left.x + right.x) * 0.5;
-    const centerY = (left.y + right.y) * 0.5;
+    const centerX = (left.x + right.x) * 0.5; // X center between eyes
+    const centerY = (left.y + right.y) * 0.5; // Y center between eyes
     const iod = Math.hypot(right.x - left.x, right.y - left.y);
 
     if (this.baselineIOD === null) {
       this.baselineIOD = iod;
     }
+
+    // console.log(centerX)
 
     const normX = (centerX - 0.5) * 2;
     const normY = (centerY - 0.5) * 2;
@@ -563,9 +611,12 @@ export class WebGPUApp{
 
     let distance = this.headDistance;
     if (this.baselineIOD && iod > 0.00001) {
-      const scale = this.baselineIOD / iod;  // >1 means farther
-      distance = this.calibrationDistance * scale;
-      distance = Math.min(Math.max(distance, this.headSettings.minDist), this.headSettings.maxDist);
+      const distanceGain = 3.0; // >1 amplifies forward/back effect
+      const ratio = this.baselineIOD! / iod;       // >1 => farther
+      const gamma = 1.6;                               // >1 amplifies; 0<gamma<1 softens
+      const ratioNL = Math.pow(Math.min(Math.max(ratio, 0.01), 10.0), gamma); // clamp, then power
+      distance = this.calibrationDistance * ratioNL * distanceGain;
+    //   distance = Math.min(Math.max(distance, this.headSettings.minDist), this.headSettings.maxDist);
     }
 
     this.headYaw = Math.min(Math.max(yaw, -this.headSettings.yawLimit), this.headSettings.yawLimit);
@@ -646,7 +697,47 @@ export class WebGPUApp{
       ],
     });
 
+    this.camUniformBindGroupLayout = this.device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // viewMatrix
+        { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // projectionMatrix
+        { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // canvasSize
+        { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // uTime
+        { binding: 4, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // modelMatrix
+        { binding: 5, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // uTestValue
+        { binding: 6, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // uTestValue_02
+        { binding: 7, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } }, // Sampler
+        { binding: 8, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } }, // Texture
+        { binding: 9, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } }, // Texture
+      ],
+    });
+
     this.pipeline = this.device.createRenderPipeline({
+      layout: this.device.createPipelineLayout({
+        bindGroupLayouts: [this.uniformBindGroupLayout],
+      }),
+      vertex: {
+        module: this.device.createShaderModule({ code: basicWGSL }),
+        entryPoint: 'vertex_main',
+        buffers: [{
+          arrayStride: this.loadVertexLayout.arrayStride,
+          attributes: this.loadVertexLayout.attributes,
+        }],
+      },
+      fragment: {
+        module: this.device.createShaderModule({ code: basicWGSL }),
+        entryPoint: 'fragment_main',
+        targets: [{ format: this.presentationFormat }],
+      },
+      primitive: { topology: 'triangle-list', cullMode: 'none' },
+      depthStencil: {
+        format: 'depth24plus',
+        depthWriteEnabled: true,
+        depthCompare: 'less',
+      },
+    });
+
+    this.camPipeline = this.device.createRenderPipeline({
       layout: this.device.createPipelineLayout({
         bindGroupLayouts: [this.uniformBindGroupLayout],
       }),
@@ -686,6 +777,22 @@ export class WebGPUApp{
         { binding: 9, resource: this.maskTexture.createView() },
       ],
     });
+    
+    this.camUniformBindGroup = this.device.createBindGroup({
+      layout: this.camUniformBindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: this.viewMatrixBuffer } },
+        { binding: 1, resource: { buffer: this.projectionMatrixBuffer } },
+        { binding: 2, resource: { buffer: this.canvasSizeBuffer } },
+        { binding: 3, resource: { buffer: this.uTimeBuffer } },
+        { binding: 4, resource: { buffer: this.camModelMatrixBuffer } },
+        { binding: 5, resource: { buffer: this.uTestValueBuffer } },
+        { binding: 6, resource: { buffer: this.uTestValue_02Buffer } },
+        { binding: 7, resource: this.sampler },
+        { binding: 8, resource: this.cubeTexture.createView() },
+        { binding: 9, resource: this.maskTexture.createView() },
+      ],
+    });
   }
 
   private getViewMatrix(deltaTime: number) {
@@ -705,7 +812,11 @@ export class WebGPUApp{
         }
         headCam.setPose({ yaw: this.headYaw, pitch: this.headPitch, distance: this.headDistance });
       }
+    } else {
+      // Even when viewing with Arcball/WASD, advance the head camera so the icon keeps moving
+      (this.cameras['head'] as HeadTrackedCamera).update(deltaTime, input);
     }
+    
     return camera.update(deltaTime, input);
   }
 
@@ -755,6 +866,30 @@ export class WebGPUApp{
     );
   }
 
+  // Build and upload the model matrix for the head camera icon
+  private writeHeadIconModelMatrix(scale = 0.1, offset = 0.0) {
+    const headCam = this.cameras['head'] as HeadTrackedCamera;
+
+    const camModel = mat4.create();
+    mat4.copy(headCam.matrix, camModel);
+
+    // Scale orientation columns (right, up, back). Leave position unscaled.
+    camModel[0]  *= scale; camModel[1]  *= scale; camModel[2]  *= scale;   // right
+    camModel[4]  *= scale; camModel[5]  *= scale; camModel[6]  *= scale;   // up
+    camModel[8]  *= scale; camModel[9]  *= scale; camModel[10] *= scale;   // back
+
+    // Optional: push the icon forward (toward camera's look direction) to ensure visibility
+    if (offset !== 0) {
+      // forward = -back
+      camModel[12] += -camModel[8]  * offset;
+      camModel[13] += -camModel[9]  * offset;
+      camModel[14] += -camModel[10] * offset;
+    }
+
+    // Upload to the shared model matrix uniform
+    this.device.queue.writeBuffer(this.camModelMatrixBuffer, 0, camModel.buffer);
+  }
+
   private renderFrame() {
     const now = Date.now();
     const deltaTime = (now - this.lastFrameMS) / 1000;
@@ -795,6 +930,12 @@ export class WebGPUApp{
     passEncoder.setVertexBuffer(0, this.loadVerticesBuffer);
     passEncoder.setIndexBuffer(this.loadIndexBuffer!, 'uint32');
     passEncoder.drawIndexed(this.loadIndexCount);
+
+    this.writeHeadIconModelMatrix(0.1, 0.0);
+    passEncoder.setBindGroup(0, this.camUniformBindGroup);
+    passEncoder.setVertexBuffer(0, this.camLoadVerticesBuffer);
+    passEncoder.setIndexBuffer(this.camLoadIndexBuffer!, 'uint32');
+    passEncoder.drawIndexed(this.camLoadIndexCount);
     passEncoder.end();
 
     // Provide depth to the effect (view can be recreated each frame)
