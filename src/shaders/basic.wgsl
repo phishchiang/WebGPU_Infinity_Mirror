@@ -70,7 +70,7 @@ const octaveDirs = array<vec3f, 5>(
 // fBM (fractional Brownian motion)
 fn fbm(p: vec3f) -> f32 {
   var value = 0.0;
-  var amplitude = 0.5;
+  var amplitude = 0.6;
   var frequency = 10.0;
   for (var i = 0; i < 5; i = i + 1) {
     // Animate each octave in a different direction and speed
@@ -118,12 +118,12 @@ fn fragment_main(input: FragmentInput) -> @location(0) vec4f {
   let segX = floor(x * 10.0);
 
   // Global control (overall frequency)
-  let globalRate: f32 = 0.5;               // changes ~every 2s on average; tune this
+  let globalRate: f32 = 0.1;               // changes ~every 2s on average; tune this
   let baseT = uTime * globalRate;
 
   // Per-segment random speed (period) in [0.5x, 2.0x] and a random phase offset
   let speedRnd = hash3(vec3f(segX, 37.0, 0.0));
-  let speed    = mix(0.5, 2.0, speedRnd);  // segment-specific cadence
+  let speed    = mix(0.1, 2.0, speedRnd);  // segment-specific cadence
   let phaseRnd = hash3(vec3f(segX, 71.0, 0.0));
   let phaseOff = phaseRnd;                  // [0,1) offset so segments don’t switch together
 
@@ -140,18 +140,21 @@ fn fragment_main(input: FragmentInput) -> @location(0) vec4f {
   let e = smoothstep(0.0, 1.0, phaseSeg);
   var bwPattern: f32 = mix(r0, r1, e);
 
-  var finalColor: vec4f = textureSample(myTexture, mySampler, input.frag_uv);
+  var finalColor: vec4f = textureSample(myTexture, mySampler, flipped_uv);
 
   // Animate along Z for turbulence
   let noisePos = vec3f(input.frag_uv2.x * 10.0, input.frag_uv2.y, 1.0) + vec3f(0.0, uTime * 0.01, uTime * 0.016);
   var noiseValue = fbm(noisePos);
 
   // apply power to noise value
-  noiseValue = pow(noiseValue, 4.0); // Uncomment to apply power to the noise value
+  noiseValue = pow(noiseValue, 4.0) + pow(noiseValue, 1.0) * bwPattern; // Uncomment to apply power to the noise value
 
   // var maskColor: vec4f = textureSample(myMaskTexture, mySampler, flipped_uv);
   var maskColor = vec4f(1.0) * noiseValue * bwPattern;
-  finalColor -= maskColor.r;
-  return finalColor;
-  // return vec4f(noiseValue, noiseValue, noiseValue, 1.0);
+  var baseColor = finalColor * 0.5 ;
+  var addColor = finalColor * smoothstep(0.2, 1.0, maskColor.r) * 4.0;
+  var subColor = vec4f(1.0) * smoothstep(0.0, 0.01,maskColor.r)* 2.0;
+  // return  finalColor + addColor - subColor;
+  return  finalColor * noiseValue;
+  // return vec4f(bwPattern, bwPattern, bwPattern, 1.0);
 }

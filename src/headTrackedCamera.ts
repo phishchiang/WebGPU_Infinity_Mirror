@@ -77,7 +77,7 @@ export class HeadTrackedCamera extends CameraBase {
     this.maxYaw = opts.maxYaw ?? 0.6; // ~34°
     this.maxPitch = opts.maxPitch ?? 0.4; // ~23°
     this.minDistance = opts.minDistance ?? 2.0;
-    this.maxDistance = opts.maxDistance ?? 15.0;
+    this.maxDistance = opts.maxDistance ?? 150.0;
 
     this.updateMatrix();
   }
