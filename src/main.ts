@@ -1,6 +1,7 @@
 import { mat4, vec3 } from 'wgpu-matrix';
 import { GUI } from 'dat.gui';
 import basicWGSL from './shaders/basic.wgsl?raw'; // Raw String Import but only specific to Vite.
+import camDemoWGSL from './shaders/camDemo.wgsl?raw'; // Raw String Import but only specific to Vite.
 import { ArcballCamera, WASDCamera } from './camera';
 import { HeadTrackedCamera } from './headTrackedCamera'; // Added head-tracked camera
 import { createInputHandler } from './input';
@@ -742,7 +743,7 @@ export class WebGPUApp{
         bindGroupLayouts: [this.uniformBindGroupLayout],
       }),
       vertex: {
-        module: this.device.createShaderModule({ code: basicWGSL }),
+        module: this.device.createShaderModule({ code: camDemoWGSL }),
         entryPoint: 'vertex_main',
         buffers: [{
           arrayStride: this.loadVertexLayout.arrayStride,
@@ -750,7 +751,7 @@ export class WebGPUApp{
         }],
       },
       fragment: {
-        module: this.device.createShaderModule({ code: basicWGSL }),
+        module: this.device.createShaderModule({ code: camDemoWGSL }),
         entryPoint: 'fragment_main',
         targets: [{ format: this.presentationFormat }],
       },
@@ -930,7 +931,8 @@ export class WebGPUApp{
     passEncoder.setVertexBuffer(0, this.loadVerticesBuffer);
     passEncoder.setIndexBuffer(this.loadIndexBuffer!, 'uint32');
     passEncoder.drawIndexed(this.loadIndexCount);
-
+    
+    passEncoder.setPipeline(this.camPipeline);
     this.writeHeadIconModelMatrix(0.1, 0.0);
     passEncoder.setBindGroup(0, this.camUniformBindGroup);
     passEncoder.setVertexBuffer(0, this.camLoadVerticesBuffer);
